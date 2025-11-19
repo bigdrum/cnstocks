@@ -1,6 +1,8 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 )
@@ -57,4 +59,60 @@ func TestParseStocks(t *testing.T) {
 			t.Errorf("expected positive market cap, got %f", first.MarketCap)
 		}
 	}
+}
+
+func TestE2E(t *testing.T) {
+	// 1. Setup Mock Server
+	htmlContent, err := os.ReadFile("testing/china_stocks.html")
+	if err != nil {
+		t.Fatalf("failed to read test data: %v", err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write(htmlContent)
+	}))
+	defer server.Close()
+
+	// 2. Set Environment Variable
+	os.Setenv("TARGET_URL", server.URL)
+	defer os.Unsetenv("TARGET_URL")
+
+	// 3. Run Fetch
+	// Clean up before starting
+	os.Remove("top_100_china_stocks.csv")
+	os.Remove("market_map.html")
+	defer os.Remove("top_100_china_stocks.csv")
+	defer os.Remove("market_map.html")
+
+	if err := runFetch(); err != nil {
+		t.Fatalf("runFetch failed: %v", err)
+	}
+
+	// Verify CSV
+	if _, err := os.Stat("top_100_china_stocks.csv"); os.IsNotExist(err) {
+		t.Fatal("top_100_china_stocks.csv was not created")
+	}
+
+	// 4. Run Generate HTML
+	if err := runGenerateHTML(); err != nil {
+		t.Fatalf("runGenerateHTML failed: %v", err)
+	}
+
+	// Verify HTML
+	if _, err := os.Stat("market_map.html"); os.IsNotExist(err) {
+		t.Fatal("market_map.html was not created")
+	}
+
+	// Optional: Check HTML content
+	generatedHTML, err := os.ReadFile("market_map.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !contains(string(generatedHTML), "Tencent") {
+		t.Error("HTML missing expected company name")
+	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && s[0:len(substr)] == substr || (len(s) > len(substr) && contains(s[1:], substr))
 }
