@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/csv"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -42,9 +43,23 @@ func main() {
 		log.Fatalf("status code error: %d %s", res.StatusCode, res.Status)
 	}
 
-	doc, err := goquery.NewDocumentFromReader(res.Body)
+	stocks, err := parseStocks(res.Body)
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	fmt.Printf("Found %d stocks\n", len(stocks))
+
+	if err := saveToCSV(stocks); err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println("Data saved to top_100_china_stocks.csv")
+}
+
+func parseStocks(r io.Reader) ([]Stock, error) {
+	doc, err := goquery.NewDocumentFromReader(r)
+	if err != nil {
+		return nil, err
 	}
 
 	var stocks []Stock
@@ -97,16 +112,12 @@ func main() {
 		stocks = append(stocks, stock)
 	})
 
-	fmt.Printf("Found %d stocks\n", len(stocks))
-
-	if err := saveToCSV(stocks); err != nil {
-		log.Fatal(err)
-	}
-	fmt.Println("Data saved to top_100_china_stocks.csv")
+	return stocks, nil
 }
 
 func parseMarketCap(s string) float64 {
 	s = strings.ReplaceAll(s, "$", "")
+	s = strings.ReplaceAll(s, "¥", "")
 	s = strings.ReplaceAll(s, ",", "")
 	s = strings.TrimSpace(s)
 
